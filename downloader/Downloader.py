@@ -5,10 +5,10 @@ from threading import Thread
 
 class DownloadSlip:
 
-    def __init__(self, url, item):
+    def __init__(self, url, item, savepath):
         self.url = url
         self.item = item
-
+        self.savepath = savepath
 
 class Downloader(Queue):
 
@@ -16,10 +16,11 @@ class Downloader(Queue):
     storage_callback = None
     threads = 3
 
-    def __init__(self, http_callback, storage_callback, headers, threads):
+    def __init__(self, project, http_callback, storage_callback, headers, threads):
 
-        self.headers = headers
+        self.project = project
         self.storage_callback = storage_callback
+        self.headers = headers
         self.threads = threads
         self.http_callback = http_callback
         super(Downloader, self).__init__()
@@ -29,16 +30,15 @@ class Downloader(Queue):
             t = Thread(target=self._downloader)
             t.daemon = True
             t.start()
-            # TODO: Log spinning up download threads
+
 
     def _downloader(self):
         while not self.empty():
             slip = self.get()
-            file_item = slip.item
             file_url = slip.url
+            self.project.log("transaction", "Downloading " + file_url, "info", True)
             data = Common.webrequest(file_url, self.headers, self.http_callback, None, True)
-            # TODO: Log downloading file
-            self.storage_callback(data, file_item)
+            self.storage_callback(data, slip)
 
 
 

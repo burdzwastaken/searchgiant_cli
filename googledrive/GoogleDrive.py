@@ -7,133 +7,138 @@ from datetime import datetime, timedelta
 from threading import Thread
 from downloader import Downloader
 import os
+import hashlib
+from project import Project
+from oi.IO import IO
 
 
 class GoogleDrive(OnlineStorage.OnlineStorage):
 
-    token_endpoint = ""
-    oauth_scope = ""
-    oauth_endpoint = ""
-    api_version = ""
-    api_endpoint = ""
-    redirect_uri = ""
-
     files = []
-
-    client_id = ""
-    client_secret = ""
 
     oauth = {"access_token": "",
              "refresh_token": "",
              "expires_in:": 0}
 
     input_callback = None
-    config_callback = None
 
-    def __init__(self, project, input_callback, config_callback):
-        self.project = project
-        config = self.project.config
-        self.token_endpoint = config['token_endpoint']
-        self.oauth_scope = config['oauth_scope']
-        self.oauth_endpoint = config['oauth_endpoint']
-        self.api_version = config['api_version']
-        self.api_endpoint = config['api_endpoint']
-        self.redirect_uri = config['redirect_uri']
-        self.client_id = config['client_id']
-        self.client_secret = config['client_secret']
-        self.input_callback = input_callback
-        self.config_callback = config_callback
+
+    def __init__(self, working_dir):
+        project_name = "Google_Drive"
+        self.project = Project.Project(working_dir, project_name)
         self.files = []
-        super(GoogleDrive, self).__init__(self.api_endpoint, self.input_callback, "Google_Drive")
+        if "OAUTH" in self.project.config:
+            self.oauth = self.project.config['OAUTH']
+        super(GoogleDrive, self).__init__(self.project.config['API_ENDPOINT'], self.input_callback, project_name)
 
     def _authorize(self):
+        self.project.log("transaction", "Initiating OAUTH 2 Protocol with " + self.project.config['TOKEN_ENDPOINT'], "info", True)
         if not self.oauth['refresh_token']:
+            self.project.log("transaction", "No valid refresh token found..", "warning", True)
+            if not self.project.config['CLIENT_ID'] or not self.project.config['CLIENT_SECRET']:
+                self.project.log("transaction", "No client id or client secret. Asking for user input..", "warning", True)
+                IO.put("You must configure your account for OAUTH 2.0")
+                IO.put("Please visit https://console.developers.google.com/project")
+                IO.put("& create an OAUTH 2.0 client ID under APIs & Auth > Credentials")
+                client_id = IO.get("Client ID:")
+                client_secret = IO.get("Client Secret:")
+                self.project.save("CLIENT_ID", client_id)
+                self.project.save("CLIENT_SECRET", client_secret)
+                self.project.log("transaction", "Received client_id and client_secret from user (" + client_id + ") (" + client_id + ")", "info", True)
+
             # Step 1
             response_type = 'code'
             query_string = (
-            {'redirect_uri': self.redirect_uri, 'response_type': response_type, 'client_id': self.client_id,
-             'scope': self.oauth_scope, 'approval_prompt': 'force', 'access_type': 'offline'})
+            {'redirect_uri': self.project.config['REDIRECT_URI'], 'response_type': response_type, 'client_id': self.project.config['CLIENT_ID'],
+             'scope': self.project.config['OAUTH_SCOPE'], 'approval_prompt': 'force', 'access_type': 'offline'})
             params = urllib.parse.urlencode(query_string)
-            step1 = self.oauth_endpoint + '?' + params
+            step1 = self.project.config['OAUTH_ENDPOINT'] + '?' + params
             try:
                 webbrowser.open(step1)
             except:
                 pass
-            code = self.input_callback('Authorization Code')
-
+            code = IO.get("Authorization Code:")
+            self.project.log("transaction", "Auth code received: (" + code + ")", "info", True)
             # Step 2
-            query_string = ({'code': code, 'redirect_uri': self.redirect_uri, 'client_id': self.client_id, 'scope': '',
-                             'client_secret': self.client_secret, 'grant_type': 'authorization_code'})
+            query_string = ({'code': code, 'redirect_uri': self.project.config['REDIRECT_URI'], 'client_id': self.project.config['CLIENT_ID'], 'scope': '',
+                             'client_secret': self.project.config['CLIENT_SECRET'], 'grant_type': 'authorization_code'})
             params = urllib.parse.urlencode(query_string)
-            response = Common.webrequest(self.token_endpoint,
+            response = Common.webrequest(self.project.config['TOKEN_ENDPOINT'],
                                          {'content-type': 'application/x-www-form-urlencoded;charset=utf-8'},
                                          self.http_intercept, params)
             json_response = json.loads(response)
             self._parse_token(json_response)
-            self.config_callback.save(self.oauth)
+            self.project.save("OAUTH", self.oauth)
         else:
             self._refresh()
-            self.config_callback.save(self.oauth)
+            self.project.save("OAUTH", self.oauth)
 
-        t = Thread(target=self._refresh, args=({int(self.oauth['expires_in'])}))
-        t.daemon = True
-        t.start()
+        self.project.log("transaction", "Authorization complete", "info", True)
 
-        # TODO: Logging here, access token etc
 
     def _refresh(self):
-        query_string = ({'client_secret': self.client_secret, 'grant_type': 'refresh_token',
-                         'refresh_token': self.oauth['refresh_token'], 'client_id': self.client_id})
+        query_string = ({'client_secret': self.project.config['CLIENT_SECRET'], 'grant_type': 'refresh_token',
+                         'refresh_token': self.oauth['refresh_token'], 'client_id': self.project.config['CLIENT_ID']})
         params = urllib.parse.urlencode(query_string)
-        response = Common.webrequest(self.token_endpoint,
+        response = Common.webrequest(self.project.config['TOKEN_ENDPOINT'],
                                      {'content-type': 'application/x-www-form-urlencoded;charset=utf-8'},
                                      self.http_intercept, params)
         json_response = json.loads(response)
         self._parse_token(json_response)
 
     def full_sync(self):
-        # TODO: Logging here
+        self.project.log("transaction", "Full synchronization initiated", "info", True)
+        self.project.log("transaction", "API Endpoint is " + self.project.config['API_ENDPOINT'], "info", True)
         self.files = []
-        self._get_items(Common.joinurl(self.api_endpoint, "files?maxResults=0"))
+        self.project.log("transaction", "Calculating total drive items...", "info", True)
+        self._get_items(Common.joinurl(self.project.config['API_ENDPOINT'], "files?maxResults=0"))
         cnt = len(self.files)
-        # TODO: Log number of items to be synced
-        d = Downloader.Downloader(self.http_intercept, self._save_file, self.get_auth_header, int(self.project.config['threads']))
-        for file in self.files:
-            parentmap = self._get_parent_mapping(file, self.files)
-            path_to_create = os.normpath(os.path.join(path_to_create, parentmap))
-            filetitle = Common.safefilename(file['title'])
+        self.project.log("transaction", "Total files queued for synchronization: " + str(cnt), "info", True)
+        d = Downloader.Downloader(self.project, self.http_intercept, self._save_file, self.get_auth_header, int(self.project.config['THREADS']))
 
+        for file in self.files:
+            self.project.log("transaction", "Calculating " + file['title'], "info", True)
             download_uri = self._get_download_url(file)
-            d.put(Downloader.DownloadSlip(download_uri, file))
+            parentmap = self._get_parent_mapping(file, self.files)
+            path_to_create = os.path.normpath(os.path.join(self.project.data_dir, parentmap))
+            filetitle = Common.safefilename(file['title'])
+            if filetitle != file['title']:
+                self.project.log("exception", "Normalized " + file['title'] + " to " + filetitle, "warning", True)
+
+            savepath = os.path.join(path_to_create, filetitle)
+            download_file = True
+            if os.path.isfile(savepath):
+                if 'md5Checksum' in file:
+                    if Common.hashfile(open(savepath,'rb'),hashlib.md5()) == file['md5Checksum']:
+                        download_file = False
+                        self.project.log("exception", "Local and remote hash matches for " + file['title'] + " ... Skipping download", "warning", True)
+                    else:
+                        self.project.log("exception", "Local and remote hash differs for " + file['title'] + " ... Queuing for download", "critical", True)
+
+            if download_file:
+                self.project.log("transaction", "Queueing " + file['title'] + " for download...", "info", True)
+                d.put(Downloader.DownloadSlip(download_uri, file, savepath))
+
         d.start()
 
-    def _save_file(self, data, file):
-        parentmap = self._get_parent_mapping(file, self.files)
-        path_to_create = os.path.normpath(os.path.join(self.project.data_dir, parentmap))
-        filetitle = Common.safefilename(file['title'])
+    def _save_file(self, data, slip):
+        savepath = slip.savepath
+        file_item = slip.item
+        path_to_create = os.path.dirname(savepath)
 
-        if filetitle != file['title']:
-            #TODO LOG Warning normalized filename from .. to ..
-            pass
+        if len(savepath) > 255:
+            self.project.log("exception", "File name is too long to save. File was NOT downloaded: " + savepath, "critical", True)
 
-        savepath = os.path.join(path_to_create, filetitle)
-
-        if len(path_to_create) > 255:
-            # TODO: Log path name is too long
-            pass
         else:
             if not os.path.isdir(path_to_create):
                 os.makedirs(path_to_create, exist_ok=True)
-
-        if len(filetitle) > 255:
-            # TODO LOG path name is too long
-            pass
-        else:
             if data:
+                self.project.log("transaction", "Saving file " + savepath, "info", True)
                 self.project.savedata(data, savepath)
             else:
-                # TODO: Download metadata only
-                pass
+                self.project.log("transaction", "Saving metadata to " + savepath, "info", True)
+                data = json.dumps(file_item, sort_keys=True, indent=4)
+                self.project.savedata(data, savepath)
 
     def _get_parent_mapping(self, i, items):
         # This is the secret sauce
@@ -149,6 +154,8 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
                         return folderpath
                     else:
                         return folderpath
+            return folderpath
+        return folderpath
 
     def _get_item_by_id(self, f_id, items):
         for i in items:
@@ -188,14 +195,14 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
     def _parse_token(self, response):
         self.oauth['access_token'] = response['access_token']
         self.oauth['expires_in'] = response['expires_in']
-        self.oauth['expire_time'] = datetime.utcnow() + timedelta(0, int(self.oauth['expires_in']))
+        expire_time = datetime.utcnow() + timedelta(0, int(self.oauth['expires_in']))
+        self.oauth['expire_time'] = str(expire_time.timestamp())
         if 'refresh_token' in response:
             self.oauth['refresh_token'] = response['refresh_token']
 
-    def http_intercept(self, err, req):
+    def http_intercept(self, err):
         if err.code == 401:
-            # TODO: Reauthorize, and log
             self._authorize()
         else:
-            # TODO: Log error
-            pass
+            self.project.log("exception", "Error and system does not know how to handle: " +str(err.code), "critical", True)
+
