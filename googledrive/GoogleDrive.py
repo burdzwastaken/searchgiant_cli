@@ -24,6 +24,7 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
 
 
     def __init__(self, working_dir):
+
         project_name = "Google_Drive"
         self.project = Project.Project(working_dir, project_name)
         self.files = []
@@ -40,6 +41,10 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
                 IO.put("You must configure your account for OAUTH 2.0")
                 IO.put("Please visit https://console.developers.google.com/project")
                 IO.put("& create an OAUTH 2.0 client ID under APIs & Auth > Credentials")
+                try:
+                    webbrowser.open("http://console.developers.google.com/project")
+                except:
+                    pass
                 client_id = IO.get("Client ID:")
                 client_secret = IO.get("Client Secret:")
                 self.project.save("CLIENT_ID", client_id)
@@ -164,6 +169,7 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
         return None
 
     def _get_download_url(self, file):
+        print(file)
         preferred = "application/pdf"
         if 'downloadUrl' in file:
             return file['downloadUrl']
@@ -203,6 +209,7 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
     def http_intercept(self, err):
         if err.code == 401:
             self._authorize()
+            return self.get_auth_header()
         else:
             self.project.log("exception", "Error and system does not know how to handle: " +str(err.code), "critical", True)
 

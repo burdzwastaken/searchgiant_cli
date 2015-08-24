@@ -57,7 +57,7 @@ class Project:
 
         self.config = ConfigLoader.ConfigLoader()
         self.config.from_file(self.config_file)
-        print(self.config)
+
         self.transaction_log = os.path.join(self.log_dir, "transaction.log")
         self.exception_log = os.path.join(self.exception_log, "exception.log")
         self.metadata_file = os.path.join(self.working_dir, "metadata.csv")
@@ -77,6 +77,7 @@ class Project:
         self.exception_logger.addHandler(efh)
 
     def log(self, type, message, level, stdout=False):
+
         levels = {}
         levels['info'] = 20
         levels['warning'] = 30

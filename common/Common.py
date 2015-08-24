@@ -40,9 +40,8 @@ def webrequest(url, headers, http_intercept, data=None, binary=False):
             return response.read().decode('utf-8')
 
     except urllib.error.HTTPError as err:
-
-        http_intercept(err)
-        webrequest(url, headers, http_intercept, data, binary)
+        new_headers = http_intercept(err)
+        return webrequest(url, new_headers, http_intercept, data, binary)
 
 
 def joinurl(b, p):

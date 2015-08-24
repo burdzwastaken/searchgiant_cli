@@ -2,8 +2,6 @@ __author__ = 'aurcioli'
 
 
 class colors:
-
-
     '''Colors class:
         reset all colors with colors.reset
         two subclasses fg for foreground and bg for background.
@@ -20,7 +18,6 @@ class colors:
     reverse = '\033[07m'
     strikethrough = '\033[09m'
     invisible = '\033[08m'
-
 
     class fg:
         black = '\033[30m'
@@ -39,7 +36,6 @@ class colors:
         pink = '\033[95m'
         lightcyan = '\033[96m'
 
-
     class bg:
         black = '\033[40m'
         red = '\033[41m'
@@ -54,7 +50,7 @@ class colors:
 class IO:
     @staticmethod
     def get(query):
-        return input("[{}?{}] {}".format(colors.fg.lightgreen, colors.reset, query))
+        return input("[{}??{}] {}".format(colors.fg.lightgreen, colors.reset, query))
 
     @staticmethod
     def put(text, mode="info"):
@@ -70,4 +66,4 @@ class IO:
         elif mode == "highlight":
             print("[{}>>{}] {}{}".format(colors.fg.lightblue, colors.reset, colors.fg.lightcyan, text))
 
-        print(colors.reset, end="", flush=True)
+        print(colors.reset, end = "", flush = True)
