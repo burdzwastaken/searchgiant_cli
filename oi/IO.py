@@ -1,5 +1,5 @@
 __author__ = 'aurcioli'
-
+import sys
 
 class colors:
     '''Colors class:
@@ -48,22 +48,45 @@ class colors:
 
 
 class IO:
+    logo = ("\n"
+        "                         _           _             _\n"
+        "                        | |         (_)           | |\n"
+        " ___  ___  __ _ _ __ ___| |__   __ _ _  __ _ _ __ | |_\n"
+        "/ __|/ _ \/ _` | '__/ __| '_ \ / _` | |/ _` | '_ \| __|\n"
+        "\__ \  __/ (_| | | | (__| | | | (_| | | (_| | | | | |_\n"
+        "|___/\___|\__,_|_|  \___|_| |_|\__, |_|\__,_|_| |_|\__|\n"
+        "                                __/ |\n"
+        "                               |___/\n"
+        "\n")
+
+    my_blue = colors.fg.lightblue if sys.platform == "darwin" else colors.fg.blue
+    my_green = colors.fg.lightgreen if sys.platform == "darwin" else colors.fg.green
+    my_red = colors.fg.lightred if sys.platform == "darwin" else colors.fg.red
+    fall_back_lb = colors.fg.lightblue if sys.platform == "darwin" else colors.fg.cyan
+
     @staticmethod
     def get(query):
-        return input("[{}??{}] {}".format(colors.fg.lightgreen, colors.reset, query))
+        return input("[{}??{}] {}".format(IO.my_green, colors.reset, query))
+
+    @staticmethod
+    def print_logo():
+        print("{}{}{}".format(colors.fg.orange, IO.logo, colors.reset))
 
     @staticmethod
     def put(text, mode="info"):
-        if mode == "info":
-            print("[{}>>{}] {}".format(colors.fg.lightblue, colors.reset, text))
+        try:
+            if mode == "info":
+                print("[{}>>{}] {}".format(IO.fall_back_lb, colors.reset, text))
 
-        elif mode == "warning":
-            print("[{}!!{}] {}".format(colors.fg.yellow, colors.reset, text))
+            elif mode == "warning":
+                print("[{}!!{}] {}".format(colors.fg.orange, colors.reset, text))
 
-        elif mode == "critical" or mode == "error":
-            print("[{}!!{}] {}{}".format(colors.fg.red, colors.reset, colors.fg.lightred, text))
+            elif mode == "critical" or mode == "error":
+                print("[{}!!{}] {}{}".format(colors.fg.red, colors.reset, IO.my_red, text))
 
-        elif mode == "highlight":
-            print("[{}>>{}] {}{}".format(colors.fg.lightblue, colors.reset, colors.fg.lightcyan, text))
+            elif mode == "highlight":
+                print("[{}>>{}] {}{}".format(colors.fg.purple, colors.reset, IO.fall_back_lb, text))
 
-        print(colors.reset, end = "", flush = True)
+            print(colors.reset, end = "", flush = True)
+        except UnicodeEncodeError:
+            print("[{}!!{}] {}{}".format(colors.fg.red, colors.reset, colors.fg.lightred, "Unicode character not supported - skipping print to console"))

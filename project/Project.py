@@ -5,9 +5,10 @@ from logging import FileHandler
 from config import ConfigLoader
 from oi.IO import IO
 import time
+import shutil
 
 class DefaultConfigs:
-    defaults = {"Google_Drive":
+    defaults = {"google_drive":
                     ("TOKEN_ENDPOINT = 'https://accounts.google.com/o/oauth2/token'\r\n"
                      "OAUTH_SCOPE = 'https://www.googleapis.com/auth/drive'\r\n"
                      "OAUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/auth'\r\n"
@@ -15,8 +16,7 @@ class DefaultConfigs:
                      "API_ENDPOINT = 'https://www.googleapis.com/drive/v2'\r\n"
                      "REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'\r\n"
                      "CLIENT_ID = ''\r\n"
-                     "CLIENT_SECRET = ''\r\n"
-                     "THREADS = 3\r\n")
+                     "CLIENT_SECRET = ''\r\n")
                 }
 
 
@@ -32,23 +32,42 @@ class Project:
     transaction_logger = None
     exception_logger = None
     name = ""
+    threads = 5
+    args = None
 
-    def __init__(self, working_dir, project_name):
+    def __init__(self, args):
+        # Meh...
+        working_dir = args.project_dir[0]
+        project_name = args.service[0]
+        threads = args.threads
+        # /Meh...
+
+        self.args = args
         self.name = project_name
+        self.threads = threads
         self.working_dir = os.path.join(working_dir, self.name)
         self.data_dir = os.path.join(self.working_dir, "data")
         self.log_dir = os.path.join(self.working_dir, "logs")
         self.config_file = os.path.join(self.working_dir, "config.cfg")
-        IO.put("Initializing project in " + self.working_dir, "highlight")
+        if os.path.exists(self.working_dir):
+            IO.put("Resuming project in " + self.working_dir, "highlight")
+        else:
+            IO.put("Initializing project in " + self.working_dir, "highlight")
+
         IO.put("Data path is " + self.data_dir)
         IO.put("Log path is " + self.log_dir)
         IO.put("Config file is " + self.config_file)
 
         if not os.path.exists(self.working_dir):
             os.makedirs(self.working_dir, exist_ok=True)
-            os.makedirs(self.data_dir, exist_ok=True)
-            os.makedirs(self.log_dir, exist_ok=True)
             IO.put("Working directory not found, creating from scratch", "warn")
+        if not os.path.exists(self.data_dir):
+            os.makedirs(self.data_dir, exist_ok=True)
+            IO.put("Data directory not found, creating from scratch", "warn")
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.log_dir, exist_ok=True)
+            IO.put("Logging directory not found, creating from scratch", "warn")
+
 
         if not os.path.isfile(self.config_file):
             IO.put("Config file not found, creating default config file", "warn")
@@ -59,16 +78,18 @@ class Project:
         self.config.from_file(self.config_file)
 
         self.transaction_log = os.path.join(self.log_dir, "transaction.log")
-        self.exception_log = os.path.join(self.exception_log, "exception.log")
+        self.exception_log = os.path.join(self.log_dir, "exception.log")
         self.metadata_file = os.path.join(self.working_dir, "metadata.csv")
 
         self.transaction_logger = logging.getLogger(project_name + "_t")
         self.exception_logger = logging.getLogger(project_name + "_e")
-
+        self.transaction_logger.setLevel(20)
+        self.exception_logger.setLevel(20)
         tfh = FileHandler(self.transaction_log)
         efh = FileHandler(self.exception_log)
 
         fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
         fmt.converter = time.gmtime
         tfh.setFormatter(fmt)
         efh.setFormatter(fmt)
@@ -89,7 +110,7 @@ class Project:
             IO.put(message, level)
 
         if type.lower() == "exception":
-            self.exception_logger.log(level, message)
+            self.exception_logger.log(levels[level], message)
 
         self.transaction_logger.log(levels[level], message)
 
@@ -106,4 +127,5 @@ class Project:
 
     def savedata(self, data, filepath):
         with open(filepath, 'wb') as f:
-            f.write(data)
+            shutil.copyfileobj(data, f)
+

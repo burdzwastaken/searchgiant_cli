@@ -1,15 +1,15 @@
+
 from onlinestorage import OnlineStorage
 from common import Common
 import json
 import urllib.parse
 import webbrowser
 from datetime import datetime, timedelta
-from threading import Thread
 from downloader import Downloader
 import os
 import hashlib
-from project import Project
 from oi.IO import IO
+import time
 
 
 class GoogleDrive(OnlineStorage.OnlineStorage):
@@ -23,14 +23,13 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
     input_callback = None
 
 
-    def __init__(self, working_dir):
-
-        project_name = "Google_Drive"
-        self.project = Project.Project(working_dir, project_name)
+    def __init__(self, project):
+        self.project = project
         self.files = []
+        self.file_size_bytes = 0
         if "OAUTH" in self.project.config:
             self.oauth = self.project.config['OAUTH']
-        super(GoogleDrive, self).__init__(self.project.config['API_ENDPOINT'], self.input_callback, project_name)
+        super(GoogleDrive, self).__init__(self.project.config['API_ENDPOINT'], self.input_callback, project.name)
 
     def _authorize(self):
         self.project.log("transaction", "Initiating OAUTH 2 Protocol with " + self.project.config['TOKEN_ENDPOINT'], "info", True)
@@ -73,15 +72,15 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
                                          self.http_intercept, params)
             json_response = json.loads(response)
             self._parse_token(json_response)
-            self.project.save("OAUTH", self.oauth)
         else:
             self._refresh()
-            self.project.save("OAUTH", self.oauth)
 
+        self.project.save("OAUTH", self.oauth)
         self.project.log("transaction", "Authorization complete", "info", True)
 
 
     def _refresh(self):
+        input("REFRESH CALLED")
         query_string = ({'client_secret': self.project.config['CLIENT_SECRET'], 'grant_type': 'refresh_token',
                          'refresh_token': self.oauth['refresh_token'], 'client_id': self.project.config['CLIENT_ID']})
         params = urllib.parse.urlencode(query_string)
@@ -89,17 +88,19 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
                                      {'content-type': 'application/x-www-form-urlencoded;charset=utf-8'},
                                      self.http_intercept, params)
         json_response = json.loads(response)
+        input("REFRESH RESPONSE IS " + str(response))
         self._parse_token(json_response)
+
 
     def full_sync(self):
         self.project.log("transaction", "Full synchronization initiated", "info", True)
         self.project.log("transaction", "API Endpoint is " + self.project.config['API_ENDPOINT'], "info", True)
         self.files = []
-        self.project.log("transaction", "Calculating total drive items...", "info", True)
+
         self._get_items(Common.joinurl(self.project.config['API_ENDPOINT'], "files?maxResults=0"))
         cnt = len(self.files)
         self.project.log("transaction", "Total files queued for synchronization: " + str(cnt), "info", True)
-        d = Downloader.Downloader(self.project, self.http_intercept, self._save_file, self.get_auth_header, int(self.project.config['THREADS']))
+        d = Downloader.Downloader(self.project, self.http_intercept, self._save_file, self.get_auth_header(), self.project.threads)
 
         for file in self.files:
             self.project.log("transaction", "Calculating " + file['title'], "info", True)
@@ -108,9 +109,10 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
             path_to_create = os.path.normpath(os.path.join(self.project.data_dir, parentmap))
             filetitle = Common.safefilename(file['title'])
             if filetitle != file['title']:
-                self.project.log("exception", "Normalized " + file['title'] + " to " + filetitle, "warning", True)
+                self.project.log("exception", "Normalized '" + file['title'] + "' to '" + filetitle + "'", "warning", True)
 
             savepath = os.path.join(path_to_create, filetitle)
+
             download_file = True
             if os.path.isfile(savepath):
                 if 'md5Checksum' in file:
@@ -120,11 +122,17 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
                     else:
                         self.project.log("exception", "Local and remote hash differs for " + file['title'] + " ... Queuing for download", "critical", True)
 
-            if download_file:
+            if download_file and download_uri:
                 self.project.log("transaction", "Queueing " + file['title'] + " for download...", "info", True)
                 d.put(Downloader.DownloadSlip(download_uri, file, savepath))
-
+                if 'fileSize' in file:
+                    self.file_size_bytes += int(file['fileSize'])
+        self.project.log("transaction","Total size of files to be synchronized is {}".format(Common.sizeof_fmt(self.file_size_bytes, "B")), "highlight", True)
+        if self.project.args.prompt:
+            IO.get("Press ENTER to begin synchronization...")
         d.start()
+        while not d.empty():
+            time.sleep(1)
 
     def _save_file(self, data, slip):
         savepath = slip.savepath
@@ -169,14 +177,13 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
         return None
 
     def _get_download_url(self, file):
-        print(file)
         preferred = "application/pdf"
         if 'downloadUrl' in file:
             return file['downloadUrl']
         if 'exportLinks' in file:
             if preferred in file['exportLinks']:
                 return file['exportLinks'][preferred]
-        else:
+        if "file" in file:
             return file[0]
         return None
 
@@ -184,8 +191,10 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
         return {'Authorization': 'Bearer ' + self.oauth['access_token']}
 
     def _get_items(self, link):
+        self.project.log("transaction", "Calculating total drive items...", "info", True)
         response = Common.webrequest(link, self.get_auth_header(), self.http_intercept)
         json_response = json.loads(response)
+
         if 'nextLink' in json_response:
             items = json_response['items']
             self._add_items_to_files(items)
@@ -199,6 +208,8 @@ class GoogleDrive(OnlineStorage.OnlineStorage):
             self.files.append(i)
 
     def _parse_token(self, response):
+        # TODO REMOVE
+        input("PARSETOKEN CALLED RESPONSE = " + str(response))
         self.oauth['access_token'] = response['access_token']
         self.oauth['expires_in'] = response['expires_in']
         expire_time = datetime.utcnow() + timedelta(0, int(self.oauth['expires_in']))

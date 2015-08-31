@@ -19,15 +19,16 @@ def safefilename(f):
         f = f[:50] + '_'
     return f
 
-def webrequest(url, headers, http_intercept, data=None, binary=False):
+def webrequest(url, headers, http_intercept, data=None, binary=False, return_req=False):
 
     try:
         headers['user-agent'] = "searchgiant forensic cli"
-        print("url=" + url + "\n" + "headers=" + str(headers) + "\n" + "data=" + str(data) + "\n")
         if not data:
             # GET
             req = urllib.request.Request(url, None, headers)
             response = urllib.request.urlopen(req)
+            if return_req:
+                return response
             if binary:
                 return response.read()
             return response.read().decode('utf-8')
@@ -35,14 +36,24 @@ def webrequest(url, headers, http_intercept, data=None, binary=False):
             # POST
             req = urllib.request.Request(url, data.encode('utf-8'), headers)
             response = urllib.request.urlopen(req)
+            if return_req:
+                return response
             if binary:
                 return response.read()
             return response.read().decode('utf-8')
 
     except urllib.error.HTTPError as err:
+        # TODO REMOVE
+        input("WEBREQUEST EXCEPTION ERR=" + str(err))
         new_headers = http_intercept(err)
-        return webrequest(url, new_headers, http_intercept, data, binary)
+        return webrequest(url, new_headers, http_intercept, data, binary, return_req)
 
+def sizeof_fmt(num, suffix='B'):
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        if abs(num) < 1024.0:
+            return "{:.2f}{}{}".format(num, unit, suffix)
+        num /= 1024.0
+    return "{:.2f}{}{}".format(num, 'Yi', suffix)
 
 def joinurl(b, p):
     if not b.endswith("/"):

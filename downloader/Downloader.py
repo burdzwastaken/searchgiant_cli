@@ -37,7 +37,7 @@ class Downloader(Queue):
             slip = self.get()
             file_url = slip.url
             self.project.log("transaction", "Downloading " + file_url, "info", True)
-            data = Common.webrequest(file_url, self.headers, self.http_callback, None, True)
+            data = Common.webrequest(file_url, self.headers, self.http_callback, None, False, True) # Response object gets passed to shutil.copyfileobj
             self.storage_callback(data, slip)
 
 
